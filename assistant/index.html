@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161a">
+<meta name="robots" content="noindex, nofollow">
+<title>Assistant</title>
+<meta name="description" content="Voice personal assistant. Signs in with your account; holds no keys.">
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #17181b; --muted: #5d6169; --line: #dedbd4;
+    --accent: #1f5f8b; --accent-ink: #ffffff; --good: #1d7a46; --bad: #a3392b; --warn: #8a5a00;
+    --opt: #f0eee9; --opt-hover: #e6e3dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a; --card: #1d2026; --ink: #eceae6; --muted: #a2a6ad; --line: #30343c;
+      --accent: #5aa7dc; --accent-ink: #0d1116; --good: #4cc483; --bad: #ef7a6a; --warn: #e2b04a;
+      --opt: #262a31; --opt-hover: #2f343c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161a; --card: #1d2026; --ink: #eceae6; --muted: #a2a6ad; --line: #30343c;
+    --accent: #5aa7dc; --accent-ink: #0d1116; --good: #4cc483; --bad: #ef7a6a; --warn: #e2b04a;
+    --opt: #262a31; --opt-hover: #2f343c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100dvh;
+         display: flex; flex-direction: column; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+  header { display: flex; align-items: center; gap: 10px; padding: 12px 0; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; letter-spacing: .2px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.live { background: var(--good); } .dot.busy { background: var(--warn); } .dot.err { background: var(--bad); }
+  #status { color: var(--muted); font-size: 15px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .link { background: none; border: 0; color: var(--muted); font-size: 15px; text-decoration: underline; padding: 4px; }
+  main { flex: 1; display: flex; flex-direction: column; gap: 14px; max-width: 720px; width: 100%; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 15px; }
+  .meta b { color: var(--ink); font-weight: 600; }
+  #stem { font-size: 21px; line-height: 1.4; margin: 10px 0 12px; }
+  #options { display: flex; flex-direction: column; gap: 8px; }
+  .opt { display: flex; gap: 12px; align-items: flex-start; text-align: left; width: 100%;
+         background: var(--opt); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .opt:hover { background: var(--opt-hover); }
+  .opt .l { font-weight: 700; min-width: 1.4em; }
+  .opt.right { outline: 2px solid var(--good); } .opt.wrong { outline: 2px solid var(--bad); }
+  #result { display: none; font-size: 17px; }
+  #result.show { display: block; }
+  #result .verdict { font-weight: 700; } #result.good .verdict { color: var(--good); } #result.bad .verdict { color: var(--bad); }
+  #talk { font-size: 15px; color: var(--muted); min-height: 2.8em; }
+  #talk .who { font-weight: 600; color: var(--ink); }
+  .controls { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .controls > * { max-width: 720px; width: 100%; margin: 0 auto; }
+  body.signed-in main { padding-bottom: 150px; }
+  #go { width: 100%; padding: 20px; font-size: 22px; font-weight: 700; border-radius: 16px; border: 0;
+        background: var(--accent); color: var(--accent-ink); }
+  #go.stop { background: var(--bad); color: #fff; }
+  #go:disabled { opacity: .6; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); font-size: 15px; }
+  label.toggle { display: flex; align-items: center; gap: 8px; }
+  .empty { color: var(--muted); }
+  form { display: flex; flex-direction: column; gap: 10px; }
+  input[type=checkbox] { width: 22px; height: 22px; flex: none; margin: 0; }
+  input:not([type=checkbox]) { font: inherit; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); width: 100%; }
+  .primary { padding: 14px; border-radius: 12px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+  #msg { color: var(--muted); font-size: 15px; min-height: 1.4em; }
+  .warn { color: var(--warn); font-size: 15px; }
+  [hidden] { display: none !important; }
+  footer.about { max-width: 720px; width: 100%; margin: 8px auto 0; color: var(--muted); font-size: 14px; }
+  footer.about a { color: var(--accent); }
+  body.signed-in footer.about { padding-bottom: 150px; }
+  body.signed-in main { padding-bottom: 0; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>Assistant</h1>
+  <span id="status">Signed out</span>
+  <button class="link" id="signout" hidden>Sign out</button>
+</header>
+
+<main>
+  <!-- Sign-in -->
+  <section class="card" id="signin" hidden>
+    <form id="pwForm">
+      <input id="email" type="email" autocomplete="email" placeholder="Email" required>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Password">
+      <button class="primary" type="submit">Sign in</button>
+      <button class="link" type="button" id="sendLink">Email me a sign-in link instead</button>
+      <div id="msg"></div>
+    </form>
+  </section>
+
+  <!-- Study -->
+  <section id="study" hidden>
+    <div class="card">
+      <div class="meta" id="meta"><span class="empty">Tap Start and say what you'd like to do.</span></div>
+      <div id="stem"></div>
+      <div id="options"></div>
+    </div>
+    <div class="card" id="result"></div>
+    <div id="talk"></div>
+    <div class="warn" id="warn" hidden></div>
+  </section>
+</main>
+
+<footer class="about">
+  <p>Personal Assistant is a private tool for its owner and a few invited users. Not a public service. It provides
+     study and practice tools, personal planning and productivity tools, email organization for the owner's own
+     mailbox, and access by web, WhatsApp, and voice. It does not accept sign-ups and is not offered to the public.</p>
+  <p>Voice conversations on this page are processed in real time by Google Gemini; the assistant stores your answers
+     and scores, not your audio.</p>
+  <p><a href="../privacy.html">Privacy policy</a> · <a href="../index.html">Home</a></p>
+</footer>
+
+<div class="controls" id="controls" hidden>
+  <button id="go">Start</button>
+  <div class="row">
+    <label class="toggle"><input type="checkbox" id="speaker"> Phone speaker (no interrupting)</label>
+    <span id="score"></span>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------------------------------------------
+// Assistant — static voice page. Holds NO keys. Sign-in goes through voice-gateway (which keeps the Supabase
+// key server-side); the Gemini key never leaves gemini-token, which hands back a single-use, locked token.
+// The model never sees ids: this page holds the study session id and sends it with each tool call.
+// ---------------------------------------------------------------------------------------------------
+const FN = "https://bulkcdxvvhzqxcwwxdka.supabase.co/functions/v1";
+const LIVE_WS = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained";
+const AUTH_KEY = "assistant.auth";
+
+const $ = (id) => document.getElementById(id);
+const S = {
+  auth: null,          // {access_token, refresh_token, expires_at}
+  running: false, live: false, fails: 0,
+  ws: null, wsGen: 0,
+  token: null, tokenModel: null, tokenAt: 0,
+  handle: null,        // Live session-resumption handle
+  sessionId: null,     // study session id (server-side)
+  ctx: null, mic: null, node: null, src: null,
+  playing: new Set(), nextTime: 0, speakingUntil: 0,
+  wake: null,
+  coachLine: "", userLine: "",
+  question: null,
+};
+
+// ---------- storage (best effort) ----------
+function loadAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || "null"); } catch { return null; } }
+function saveAuth(a) { S.auth = a; try { a ? localStorage.setItem(AUTH_KEY, JSON.stringify(a)) : localStorage.removeItem(AUTH_KEY); } catch {} }
+
+// ---------- UI ----------
+function setStatus(text, kind) { $("status").textContent = text; $("dot").className = "dot" + (kind ? " " + kind : ""); }
+function showSignedIn(yes) {
+  document.body.classList.toggle("signed-in", yes);
+  $("signin").hidden = yes; $("study").hidden = !yes; $("controls").hidden = !yes; $("signout").hidden = !yes;
+  if (!yes) setStatus("Signed out");
+  else if (!S.running) setStatus("Ready");
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function renderQuestion(q, extra) {
+  S.question = q || null;
+  const meta = [];
+  if (extra?.course) meta.push(`<b>${esc(extra.course)}</b>`);
+  if (extra?.mode) meta.push(esc(extra.mode));
+  if (q?.section) meta.push(esc((q.section_num ? q.section_num + ". " : "") + q.section));
+  if (meta.length) $("meta").innerHTML = meta.map((m) => `<span>${m}</span>`).join("");
+  if (!q) { $("stem").textContent = ""; $("options").innerHTML = ""; return; }
+  $("stem").textContent = q.stem;
+  $("options").innerHTML = (q.options || []).map((o) =>
+    `<button class="opt" data-l="${esc(o.letter)}"><span class="l">${esc(o.letter)}</span><span>${esc(o.text)}</span></button>`).join("");
+}
+function renderResult(r) {
+  const el = $("result");
+  if (!r) { el.className = "card"; el.innerHTML = ""; return; }
+  el.className = "card show " + (r.correct ? "good" : "bad");
+  el.innerHTML = `<div class="verdict">${r.correct ? "Correct" : "Not quite"} — ${esc(r.correct_letter || "")}${r.correct_answer ? ": " + esc(r.correct_answer) : ""}</div>`
+    + (r.explanation ? `<div>${esc(r.explanation)}</div>` : "");
+}
+function renderScore(sc) { $("score").textContent = sc ? `${sc.correct} / ${sc.asked}` : ""; }
+function renderTalk() {
+  $("talk").innerHTML = (S.userLine ? `<div><span class="who">You:</span> ${esc(S.userLine)}</div>` : "")
+                      + (S.coachLine ? `<div><span class="who">Assistant:</span> ${esc(S.coachLine.slice(-220))}</div>` : "");
+}
+function warn(t) { $("warn").hidden = !t; $("warn").textContent = t || ""; }
+
+// ---------- server calls ----------
+async function post(fn, body, withAuth) {
+  const headers = { "Content-Type": "application/json" };
+  if (withAuth) { await freshAuth(); headers.Authorization = "Bearer " + S.auth.access_token; }
+  const r = await fetch(`${FN}/${fn}`, { method: "POST", headers, body: JSON.stringify(body) });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (r.status === 401 && withAuth) { saveAuth(null); showSignedIn(false); throw new Error(j.message || "Please sign in again."); }
+  if (!r.ok && !j.say) throw new Error(j.message || j.error || `HTTP ${r.status}`);
+  return j;
+}
+async function freshAuth() {
+  if (!S.auth) throw new Error("Please sign in.");
+  const left = (S.auth.expires_at || 0) * 1000 - Date.now();
+  if (left > 120000) return;
+  const j = await post("voice-gateway", { op: "auth_refresh", args: { refresh_token: S.auth.refresh_token } }, false);
+  if (!j.access_token) { saveAuth(null); showSignedIn(false); throw new Error("Please sign in again."); }
+  saveAuth(j);
+}
+const gw = (op, args) => post("voice-gateway", { op, args: args || {}, session_id: S.sessionId }, true);
+
+// ---------- sign-in ----------
+$("pwForm").addEventListener("submit", async (e) => {
+  e.preventDefault(); $("msg").textContent = "Signing in…";
+  try {
+    const j = await post("voice-gateway", { op: "auth_password", args: { email: $("email").value, password: $("password").value } }, false);
+    if (!j.access_token) throw new Error(j.message || "Sign-in failed.");
+    $("password").value = ""; $("msg").textContent = ""; saveAuth(j); showSignedIn(true);
+  } catch (err) { $("msg").textContent = err.message; }
+});
+$("sendLink").addEventListener("click", async () => {
+  if (!$("email").value) { $("msg").textContent = "Enter your email first."; return; }
+  try {
+    const j = await post("voice-gateway", { op: "auth_link", args: { email: $("email").value, redirect: location.origin + location.pathname } }, false);
+    $("msg").textContent = j.message || "Check your email.";
+  } catch (err) { $("msg").textContent = err.message; }
+});
+$("signout").addEventListener("click", async () => { await stop(); saveAuth(null); showSignedIn(false); });
+
+function readLinkReturn() {
+  if (!location.hash.includes("access_token=")) return;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const a = { access_token: p.get("access_token"), refresh_token: p.get("refresh_token"), expires_at: Number(p.get("expires_at")) || (Date.now() / 1000 + Number(p.get("expires_in") || 3600)) };
+  history.replaceState(null, "", location.pathname);
+  if (a.access_token && a.refresh_token) saveAuth(a);
+}
+
+// ---------- audio out (24 kHz PCM16 from the model) ----------
+function b64ToBytes(b64) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+function bytesToB64(u8) { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+function playPcm(b64, rate) {
+  const ctx = S.ctx; if (!ctx) return;
+  const u8 = b64ToBytes(b64); const n = u8.length >> 1; if (!n) return;
+  const dv = new DataView(u8.buffer); const buf = ctx.createBuffer(1, n, rate || 24000); const ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * 2, true) / 32768;
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
+  const t = Math.max(ctx.currentTime + 0.03, S.nextTime); src.start(t); S.nextTime = t + buf.duration;
+  S.speakingUntil = performance.now() + (S.nextTime - ctx.currentTime) * 1000 + 350;
+  S.playing.add(src); src.onended = () => S.playing.delete(src);
+}
+function stopPlayback() { for (const s of S.playing) { try { s.stop(); } catch {} } S.playing.clear(); S.nextTime = 0; S.speakingUntil = 0; }
+
+// ---------- audio in (mic -> 16 kHz PCM16) ----------
+const WORKLET = `
+class Down extends AudioWorkletProcessor {
+  constructor() { super(); this.ratio = sampleRate / 16000; this.pos = 0; this.acc = 0; this.cnt = 0;
+    this.out = new Int16Array(1600); this.n = 0; }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0]; if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) {
+      this.acc += ch[i]; this.cnt++; this.pos += 1;
+      if (this.pos >= this.ratio) {           // average the samples in this output slot (cheap low-pass)
+        this.pos -= this.ratio;
+        const v = Math.max(-1, Math.min(1, this.acc / this.cnt)); this.acc = 0; this.cnt = 0;
+        this.out[this.n++] = v < 0 ? v * 0x8000 : v * 0x7fff;
+        if (this.n === this.out.length) { this.port.postMessage(this.out.slice(0).buffer, []); this.n = 0; }
+      }
+    }
+    return true;
+  }
+}
+registerProcessor("down16k", Down);`;
+
+async function startMic() {
+  S.ctx = S.ctx || new (window.AudioContext || window.webkitAudioContext)();
+  await S.ctx.resume();
+  S.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+  const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+  await S.ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+  S.src = S.ctx.createMediaStreamSource(S.mic);
+  S.node = new AudioWorkletNode(S.ctx, "down16k");
+  S.node.port.onmessage = (e) => {
+    if (!S.ws || S.ws.readyState !== 1 || !S.live) return;
+    if ($("speaker").checked && performance.now() < S.speakingUntil) return;   // half-duplex on speaker
+    S.ws.send(JSON.stringify({ realtimeInput: { audio: { data: bytesToB64(new Uint8Array(e.data)), mimeType: "audio/pcm;rate=16000" } } }));
+  };
+  S.src.connect(S.node);
+}
+function stopMic() {
+  try { S.src && S.src.disconnect(); S.node && S.node.disconnect(); } catch {}
+  if (S.mic) S.mic.getTracks().forEach((t) => t.stop());
+  S.mic = S.node = S.src = null;
+}
+
+// ---------- wake lock ----------
+async function keepAwake() { try { S.wake = await navigator.wakeLock?.request("screen"); } catch {} }
+document.addEventListener("visibilitychange", () => {
+  if (!S.running) return;
+  if (document.visibilityState === "visible") { keepAwake(); S.ctx && S.ctx.resume(); warn(""); }
+  else warn("The assistant can't hear you while this page is in the background. Keep it open on screen.");
+});
+
+// ---------- Gemini Live ----------
+async function mintToken() {
+  const j = await post("gemini-token", {}, true);
+  if (!j.token) throw new Error(j.message || "Couldn't start the voice session.");
+  S.token = j.token; S.tokenModel = j.model; S.tokenAt = Date.now();
+}
+
+function connect(kickoff) {
+  const gen = ++S.wsGen;
+  S.live = false;
+  const ws = new WebSocket(`${LIVE_WS}?access_token=${encodeURIComponent(S.token)}`);
+  S.ws = ws;
+  ws.onopen = () => {
+    const setup = { model: `models/${S.tokenModel}` };
+    if (S.handle) setup.sessionResumption = { handle: S.handle };
+    ws.send(JSON.stringify({ setup }));
+  };
+  ws.onmessage = async (ev) => {
+    if (gen !== S.wsGen) return;
+    const text = typeof ev.data === "string" ? ev.data : await ev.data.text();
+    let m; try { m = JSON.parse(text); } catch { return; }
+    onLive(m, kickoff); kickoff = false;
+  };
+  ws.onerror = () => {};
+  ws.onclose = (ev) => {
+    if (gen !== S.wsGen || !S.running) return;
+    const wasLive = S.live; S.live = false;
+    S.fails = wasLive ? 0 : S.fails + 1;
+    console.warn("Live closed:", ev.code, ev.reason);
+    if (S.fails >= 3) { const why = ev.reason; stop().then(() => fail(new Error("Voice connection failed" + (why ? ": " + why : "") + ". Tap Start to try again."))); return; }
+    setStatus("Reconnecting…", "busy");
+    setTimeout(() => reconnect().catch((e) => fail(e)), 600 * (S.fails + 1));
+  };
+}
+
+async function reconnect() {
+  if (!S.running) return;
+  if (Date.now() - S.tokenAt > 25 * 60 * 1000) await mintToken();   // token lifetime is 30 min
+  connect(!S.handle);
+}
+
+function onLive(m, kickoff) {
+  if (m.setupComplete) {
+    S.live = true; S.fails = 0; setStatus("Listening", "live");
+    if (kickoff) sendText(S.sessionId
+      ? "(Reconnected after a dropout. A study session is in progress — call repeat_question and continue.)"
+      : "(The user just opened the assistant. Greet them briefly and ask what they would like to do.)");
+    return;
+  }
+  if (m.sessionResumptionUpdate) {
+    if (m.sessionResumptionUpdate.resumable && m.sessionResumptionUpdate.newHandle) S.handle = m.sessionResumptionUpdate.newHandle;
+    return;
+  }
+  if (m.goAway) { // server is about to close: move to a fresh connection now, resuming where we are
+    const old = S.ws; S.wsGen++; try { old.close(); } catch {}
+    reconnect().catch((e) => fail(e)); return;
+  }
+  if (m.toolCall) { handleTools(m.toolCall.functionCalls || []); return; }
+  if (m.toolCallCancellation) return;
+  const sc = m.serverContent; if (!sc) return;
+  if (sc.interrupted) stopPlayback();
+  for (const p of sc.modelTurn?.parts || []) {
+    const d = p.inlineData;
+    if (d?.data && /^audio\//.test(d.mimeType || "audio/pcm")) {
+      const rate = Number((/rate=(\d+)/.exec(d.mimeType || "") || [])[1]) || 24000;
+      playPcm(d.data, rate);
+    }
+  }
+  if (sc.inputTranscription?.text) { S.userLine += sc.inputTranscription.text; S.coachLine = ""; renderTalk(); }
+  if (sc.outputTranscription?.text) { S.coachLine += sc.outputTranscription.text; renderTalk(); }
+  if (sc.turnComplete) { S.userLine = ""; }
+}
+
+function sendText(t) {
+  if (!S.ws || S.ws.readyState !== 1) return;
+  S.ws.send(JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: t }] }], turnComplete: true } }));
+}
+
+const OPS = { list_my_courses: "list_my_courses", start_session: "start_session", repeat_question: "current_question",
+              answer: "answer", skip_question: "skip", end_session: "end_session" };
+
+async function handleTools(calls) {
+  const responses = [];
+  for (const fc of calls) {
+    let say;
+    try {
+      const op = OPS[fc.name];
+      if (!op) throw new Error("unknown tool");
+      const j = await gw(op, fc.args || {});
+      if (j.session_id) S.sessionId = j.session_id;
+      const d = j.display;
+      if (d) {
+        if ("result" in d) renderResult(d.result); else if (op !== "end_session") renderResult(null);
+        if ("question" in d) renderQuestion(d.question, d);
+        if (d.score) renderScore(d.score);
+        if (d.ended) {
+          S.sessionId = null; renderQuestion(null);
+          const s = d.summary;
+          $("meta").innerHTML = s ? `<span><b>${esc(s.course)}</b></span><span>Session done: ${s.correct} of ${s.asked} correct</span>` : "<span>Session ended.</span>";
+        }
+      }
+      say = j.say ?? { ok: true };
+    } catch (err) {
+      say = { error: "The study server didn't respond. Tell the user and offer to try again." };
+      console.warn(fc.name, err);
+    }
+    responses.push({ id: fc.id, name: fc.name, response: typeof say === "object" ? say : { result: say } });
+  }
+  if (S.ws && S.ws.readyState === 1) S.ws.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+}
+
+// Tap an option = say it.
+$("options").addEventListener("click", (e) => {
+  const b = e.target.closest(".opt"); if (!b || !S.live) return;
+  sendText(`My answer is ${b.dataset.l}.`);
+});
+
+// ---------- start / stop ----------
+function fail(err) { setStatus(err.message || "Something went wrong", "err"); console.warn(err); }
+
+async function start() {
+  $("go").disabled = true; setStatus("Starting…", "busy"); warn("");
+  try {
+    await startMic();
+    await mintToken();
+    S.running = true; S.handle = null;
+    await keepAwake();
+    connect(true);
+    $("go").textContent = "Stop"; $("go").classList.add("stop");
+  } catch (err) {
+    S.running = false; stopMic();
+    fail(err.name === "NotAllowedError" ? new Error("Microphone permission is needed.") : err);
+  } finally { $("go").disabled = false; }
+}
+
+async function stop() {
+  const wasRunning = S.running;
+  S.running = false; S.live = false; S.wsGen++;
+  try { S.ws && S.ws.close(); } catch {}
+  S.ws = null; stopPlayback(); stopMic();
+  try { S.wake && S.wake.release(); } catch {} S.wake = null;
+  if (S.sessionId) {   // close the study session even if the coach didn't get to it
+    try {
+      const j = await gw("end_session");
+      const s = j.display?.summary;
+      if (s) $("meta").innerHTML = `<span><b>${esc(s.course)}</b></span><span>Session done: ${s.correct} of ${s.asked} correct</span>`;
+    } catch {}
+    S.sessionId = null;
+  }
+  S.handle = null; S.token = null;
+  $("go").textContent = "Start"; $("go").classList.remove("stop");
+  if (wasRunning && S.auth) setStatus("Ready");
+}
+
+$("go").addEventListener("click", () => (S.running ? stop() : start()));
+
+// ---------- boot ----------
+readLinkReturn();
+S.auth = loadAuth();
+showSignedIn(!!S.auth);
+</script>
+</body>
+</html>
