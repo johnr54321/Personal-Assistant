@@ -440,15 +440,15 @@ function sendText(t) {
 
 const OPS = { list_my_courses: "list_my_courses", course_status: "course_status", start_session: "start_session",
               repeat_question: "current_question", answer: "answer", skip_question: "skip", switch_mode: "switch_mode",
-              my_progress: "progress", end_session: "end_session" };
+              my_progress: "progress", end_session: "end_session", chapter_breakdown: "chapter_breakdown" };
 
 async function handleTools(calls) {
   const responses = [];
   for (const fc of calls) {
     let say;
     try {
-      const op = OPS[fc.name];
-      if (!op) throw new Error("unknown tool");
+      // New tools pass straight through by name; the gateway refuses anything it doesn't know.
+      const op = OPS[fc.name] ?? fc.name;
       const j = await gw(op, fc.args || {});
       if (j.session_id) S.sessionId = j.session_id;
       const d = j.display;
