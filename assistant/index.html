@@ -114,6 +114,7 @@
     <div class="card" id="result"></div>
     <div id="talk"></div>
     <div class="warn" id="warn" hidden></div>
+    <pre id="dbg" hidden style="font-size:12px;color:var(--muted);white-space:pre-wrap"></pre>
   </section>
 </main>
 
@@ -257,15 +258,26 @@ function readLinkReturn() {
 // ---------- audio out (24 kHz PCM16 from the model) ----------
 function b64ToBytes(b64) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
 function bytesToB64(u8) { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+const DEBUG = new URLSearchParams(location.search).has("debug");
+const D = { chunks: 0, bytes: 0, mimes: {}, played: 0 };
+function dbg() {
+  if (!DEBUG) return; const el = $("dbg"); el.hidden = false;
+  const c = S.ctx;
+  el.textContent = `audio chunks ${D.chunks} (${D.bytes} B) played ${D.played}\nmime ${Object.keys(D.mimes).join(", ") || "-"}\n`
+    + `ctx ${c ? c.state + " @" + c.sampleRate + "Hz" : "none"}  player ${S.player ? (S.player.paused ? "paused" : "playing") : "none"}\n`
+    + `audioSession ${navigator.audioSession ? navigator.audioSession.type : "n/a"}  ua ${navigator.userAgent.slice(0, 80)}`;
+}
+setInterval(dbg, 1000);
+
 function playPcm(b64, rate) {
   const ctx = S.ctx; if (!ctx) return;
   const u8 = b64ToBytes(b64); const n = u8.length >> 1; if (!n) return;
   const dv = new DataView(u8.buffer); const buf = ctx.createBuffer(1, n, rate || 24000); const ch = buf.getChannelData(0);
   for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * 2, true) / 32768;
-  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
+  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(S.out || ctx.destination);
   const t = Math.max(ctx.currentTime + 0.03, S.nextTime); src.start(t); S.nextTime = t + buf.duration;
   S.speakingUntil = performance.now() + (S.nextTime - ctx.currentTime) * 1000 + 350;
-  S.playing.add(src); src.onended = () => S.playing.delete(src);
+  S.playing.add(src); src.onended = () => { S.playing.delete(src); D.played++; };
 }
 function stopPlayback() { for (const s of S.playing) { try { s.stop(); } catch {} } S.playing.clear(); S.nextTime = 0; S.speakingUntil = 0; }
 
@@ -289,6 +301,21 @@ class Down extends AudioWorkletProcessor {
   }
 }
 registerProcessor("down16k", Down);`;
+
+function startSpeaker() {
+  // iOS: ask for a play-and-record session so output goes to the speaker/Bluetooth, not the earpiece.
+  try { if (navigator.audioSession) navigator.audioSession.type = "play-and-record"; } catch {}
+  S.ctx = S.ctx || new (window.AudioContext || window.webkitAudioContext)();
+  // Send model audio to a MediaStream played by an <audio> element. Media playback is not muted by the
+  // iPhone ring/silent switch, unlike plain Web Audio output.
+  if (!S.out && S.ctx.createMediaStreamDestination) {
+    S.out = S.ctx.createMediaStreamDestination();
+    S.player = new Audio(); S.player.autoplay = true; S.player.playsInline = true;
+    S.player.setAttribute("playsinline", ""); S.player.srcObject = S.out.stream;
+  }
+  S.ctx.resume();
+  if (S.player) S.player.play().catch(() => {});      // must start inside the tap
+}
 
 async function startMic() {
   S.ctx = S.ctx || new (window.AudioContext || window.webkitAudioContext)();
@@ -315,7 +342,7 @@ function stopMic() {
 async function keepAwake() { try { S.wake = await navigator.wakeLock?.request("screen"); } catch {} }
 document.addEventListener("visibilitychange", () => {
   if (!S.running) return;
-  if (document.visibilityState === "visible") { keepAwake(); S.ctx && S.ctx.resume(); warn(""); }
+  if (document.visibilityState === "visible") { keepAwake(); S.ctx && S.ctx.resume(); S.player && S.player.play().catch(() => {}); warn(""); }
   else warn("The assistant can't hear you while this page is in the background. Keep it open on screen.");
 });
 
@@ -386,6 +413,7 @@ function onLive(m, kickoff) {
   if (sc.interrupted) stopPlayback();
   for (const p of sc.modelTurn?.parts || []) {
     const d = p.inlineData;
+    if (d?.data) { D.chunks++; D.bytes += d.data.length; D.mimes[d.mimeType || "none"] = 1; }
     if (d?.data && /^audio\//.test(d.mimeType || "audio/pcm")) {
       const rate = Number((/rate=(\d+)/.exec(d.mimeType || "") || [])[1]) || 24000;
       playPcm(d.data, rate);
@@ -445,6 +473,7 @@ function fail(err) { setStatus(err.message || "Something went wrong", "err"); co
 
 async function start() {
   $("go").disabled = true; setStatus("Starting…", "busy"); warn("");
+  startSpeaker();                                       // synchronously, while we still have the tap
   try {
     await startMic();
     await mintToken();
