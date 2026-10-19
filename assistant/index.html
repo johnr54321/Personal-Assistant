@@ -69,6 +69,11 @@
   #msg { color: var(--muted); font-size: 15px; min-height: 1.4em; }
   .warn { color: var(--warn); font-size: 15px; }
   [hidden] { display: none !important; }
+  /* Google sign-in button: Google's official asset (google-signin.svg, light pill), shown unmodified. */
+  .gsi { display: block; margin: 0 auto; padding: 0; border: 0; background: none; border-radius: 27px; line-height: 0; }
+  .gsi img { display: block; width: 240px; height: auto; }
+  .gsi:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .or { text-align: center; color: var(--muted); font-size: 14px; margin: 12px 0; }
   footer.about { max-width: 720px; width: 100%; margin: 8px auto 0; color: var(--muted); font-size: 14px; }
   footer.about a { color: var(--accent); }
   body.signed-in footer.about { padding-bottom: 150px; }
@@ -86,7 +91,10 @@
 <main>
   <!-- Sign-in -->
   <section class="card" id="signin" hidden>
-    <button class="primary" type="button" id="google" style="width:100%;margin-bottom:14px">Sign in with Google</button>
+    <button class="gsi" type="button" id="google" aria-label="Sign in with Google">
+      <img src="google-signin.svg" alt="Sign in with Google" width="240" height="53">
+    </button>
+    <div class="or">or</div>
     <form id="pwForm">
       <input id="email" type="email" autocomplete="email" placeholder="Email" required>
       <input id="password" type="password" autocomplete="current-password" placeholder="Password">
@@ -340,7 +348,11 @@ function connect(kickoff) {
     const wasLive = S.live; S.live = false;
     S.fails = wasLive ? 0 : S.fails + 1;
     console.warn("Live closed:", ev.code, ev.reason);
-    if (S.fails >= 3) { const why = ev.reason; stop().then(() => fail(new Error("Voice connection failed" + (why ? ": " + why : "") + ". Tap Start to try again."))); return; }
+    if (!wasLive && ev.reason) S.firstReason = S.firstReason || ev.reason;   // keep the real cause
+    // A connection that never finished setup can't be resumed: its single-use token is spent.
+    if (!wasLive && !S.handle) S.tokenAt = 0;                                // force a fresh token
+    const fatal = /credit|billing|quota|permission|api key|not found|unsupported|invalid/i.test(ev.reason || "");
+    if (fatal || S.fails >= 3) { const why = S.firstReason || ev.reason; stop().then(() => fail(new Error("Voice connection failed" + (why ? ": " + why : "") + ". Tap Start to try again."))); return; }
     setStatus("Reconnecting…", "busy");
     setTimeout(() => reconnect().catch((e) => fail(e)), 600 * (S.fails + 1));
   };
@@ -348,7 +360,7 @@ function connect(kickoff) {
 
 async function reconnect() {
   if (!S.running) return;
-  if (Date.now() - S.tokenAt > 25 * 60 * 1000) await mintToken();   // token lifetime is 30 min
+  if (!S.tokenAt || Date.now() - S.tokenAt > 25 * 60 * 1000) await mintToken();   // spent or near its 30-min life
   connect(!S.handle);
 }
 
@@ -436,7 +448,7 @@ async function start() {
   try {
     await startMic();
     await mintToken();
-    S.running = true; S.handle = null;
+    S.running = true; S.handle = null; S.firstReason = null; S.fails = 0;
     await keepAwake();
     connect(true);
     $("go").textContent = "Stop"; $("go").classList.add("stop");
