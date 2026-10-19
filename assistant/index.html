@@ -482,6 +482,8 @@ $("options").addEventListener("click", (e) => {
 function fail(err) { setStatus(err.message || "Something went wrong", "err"); console.warn(err); }
 
 async function start() {
+  if (S.busy) return;
+  S.busy = true;
   $("go").disabled = true; setStatus("Starting…", "busy"); warn("");
   startSpeaker();                                       // synchronously, while we still have the tap
   try {
@@ -494,10 +496,15 @@ async function start() {
   } catch (err) {
     S.running = false; stopMic();
     fail(err.name === "NotAllowedError" ? new Error("Microphone permission is needed.") : err);
-  } finally { $("go").disabled = false; }
+  } finally { S.busy = false; $("go").disabled = false; }
 }
 
 async function stop() {
+  if (S.busy) return;
+  // Flip the button right away so a second tap during the wrap-up can't read as Start.
+  S.busy = true;
+  $("go").textContent = "Start"; $("go").classList.remove("stop"); $("go").disabled = true;
+  setStatus("Stopping…", "busy");
   const wasRunning = S.running;
   S.running = false; S.live = false; S.wsGen++;
   try { S.ws && S.ws.close(); } catch {}
@@ -512,11 +519,11 @@ async function stop() {
     S.sessionId = null;
   }
   S.handle = null; S.token = null;
-  $("go").textContent = "Start"; $("go").classList.remove("stop");
-  if (wasRunning && S.auth) setStatus("Ready");
+  S.busy = false; $("go").disabled = false;
+  if (S.auth) setStatus("Ready");
 }
 
-$("go").addEventListener("click", () => (S.running ? stop() : start()));
+$("go").addEventListener("click", () => { if (S.busy) return; S.running ? stop() : start(); });
 
 // ---------- boot ----------
 readLinkReturn();
