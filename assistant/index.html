@@ -86,10 +86,11 @@
 <main>
   <!-- Sign-in -->
   <section class="card" id="signin" hidden>
+    <button class="primary" type="button" id="google" style="width:100%;margin-bottom:14px">Sign in with Google</button>
     <form id="pwForm">
       <input id="email" type="email" autocomplete="email" placeholder="Email" required>
       <input id="password" type="password" autocomplete="current-password" placeholder="Password">
-      <button class="primary" type="submit">Sign in</button>
+      <button class="primary" type="submit">Sign in with email</button>
       <button class="link" type="button" id="sendLink">Email me a sign-in link instead</button>
       <div id="msg"></div>
     </form>
@@ -227,9 +228,17 @@ $("sendLink").addEventListener("click", async () => {
     $("msg").textContent = j.message || "Check your email.";
   } catch (err) { $("msg").textContent = err.message; }
 });
+// Google: plain navigation to Supabase's authorize endpoint (no key needed); it returns here with the
+// session in the URL hash, which readLinkReturn() picks up.
+$("google").addEventListener("click", () => {
+  const back = location.origin + location.pathname;
+  location.href = "https://bulkcdxvvhzqxcwwxdka.supabase.co/auth/v1/authorize?provider=google&redirect_to=" + encodeURIComponent(back);
+});
 $("signout").addEventListener("click", async () => { await stop(); saveAuth(null); showSignedIn(false); });
 
 function readLinkReturn() {
+  const err = new URLSearchParams((location.hash || "").slice(1) || location.search.slice(1)).get("error_description");
+  if (err) { history.replaceState(null, "", location.pathname); setTimeout(() => { $("msg").textContent = err.replace(/\+/g, " "); }, 0); return; }
   if (!location.hash.includes("access_token=")) return;
   const p = new URLSearchParams(location.hash.slice(1));
   const a = { access_token: p.get("access_token"), refresh_token: p.get("refresh_token"), expires_at: Number(p.get("expires_at")) || (Date.now() / 1000 + Number(p.get("expires_in") || 3600)) };
