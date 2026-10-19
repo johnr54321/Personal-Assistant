@@ -317,6 +317,15 @@ function startSpeaker() {
   if (S.player) S.player.play().catch(() => {});      // must start inside the tap
 }
 
+function stopSpeaker() {
+  // Tear down every audio path so nothing keeps playing (or looping its last chunk) after Stop.
+  try { if (S.player) { S.player.pause(); S.player.srcObject = null; S.player.removeAttribute("src"); S.player.load(); } } catch {}
+  try { S.out && S.out.disconnect(); } catch {}
+  try { S.ctx && S.ctx.close(); } catch {}
+  S.player = null; S.out = null; S.ctx = null;
+  try { if (navigator.audioSession) navigator.audioSession.type = "auto"; } catch {}
+}
+
 async function startMic() {
   S.ctx = S.ctx || new (window.AudioContext || window.webkitAudioContext)();
   await S.ctx.resume();
@@ -429,8 +438,9 @@ function sendText(t) {
   S.ws.send(JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: t }] }], turnComplete: true } }));
 }
 
-const OPS = { list_my_courses: "list_my_courses", start_session: "start_session", repeat_question: "current_question",
-              answer: "answer", skip_question: "skip", end_session: "end_session" };
+const OPS = { list_my_courses: "list_my_courses", course_status: "course_status", start_session: "start_session",
+              repeat_question: "current_question", answer: "answer", skip_question: "skip", switch_mode: "switch_mode",
+              my_progress: "progress", end_session: "end_session" };
 
 async function handleTools(calls) {
   const responses = [];
@@ -491,7 +501,7 @@ async function stop() {
   const wasRunning = S.running;
   S.running = false; S.live = false; S.wsGen++;
   try { S.ws && S.ws.close(); } catch {}
-  S.ws = null; stopPlayback(); stopMic();
+  S.ws = null; stopPlayback(); stopMic(); stopSpeaker();
   try { S.wake && S.wake.release(); } catch {} S.wake = null;
   if (S.sessionId) {   // close the study session even if the coach didn't get to it
     try {
